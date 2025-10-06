@@ -1,0 +1,22 @@
+# Visual Studio / .NET
+bin/
+obj/
+*.user
+*.suo
+*.vscode/
+.vs/
+*.log
+*.ncrunch*
+*.resharper
+*.dotCover
+*.dotSettings.user
+TestResults/
+*.db
+*.DS_Store
+
+# Rider
+.idea/
+
+# NuGet
+*.nupkg
+packages/
