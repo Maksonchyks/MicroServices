@@ -1,17 +1,21 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
+﻿using System.Collections.Generic;
 using System.Threading.Tasks;
 using Dapper;
 using Orders.Dal.Interfaces;
 using Orders.Domain.Enteties;
+using System.Data;
+using MySqlConnector;
 
 namespace Orders.Dal.Repositories
 {
     public class OrderItemRepository : BaseRepository, IOrderItemRepository
     {
         public OrderItemRepository(string connectionString) : base(connectionString) { }
+
+        protected new IDbConnection CreateConnection()
+        {
+            return new MySqlConnection(_connectionString);
+        }
 
         public async Task<IEnumerable<OrderItem>> GetAllAsync()
         {
@@ -39,14 +43,15 @@ namespace Orders.Dal.Repositories
             using var conn = CreateConnection();
             string sql = @"INSERT INTO OrderItem (OrderId, ProductName, Quantity, Price)
                            VALUES (@OrderId, @ProductName, @Quantity, @Price);
-                           SELECT CAST(SCOPE_IDENTITY() as int)";
+                           SELECT LAST_INSERT_ID();";
             return await conn.QuerySingleAsync<int>(sql, orderItem);
         }
 
         public async Task<bool> UpdateAsync(OrderItem orderItem)
         {
             using var conn = CreateConnection();
-            string sql = @"UPDATE OrderItem SET OrderId=@OrderId, ProductName=@ProductName, Quantity=@Quantity, Price=@Price
+            string sql = @"UPDATE OrderItem 
+                           SET OrderId=@OrderId, ProductName=@ProductName, Quantity=@Quantity, Price=@Price
                            WHERE OrderItemId=@OrderItemId";
             return await conn.ExecuteAsync(sql, orderItem) > 0;
         }
@@ -58,5 +63,4 @@ namespace Orders.Dal.Repositories
             return await conn.ExecuteAsync(sql, new { Id = orderItemId }) > 0;
         }
     }
-
 }

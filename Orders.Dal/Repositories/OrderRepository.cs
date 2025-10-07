@@ -1,17 +1,21 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
+﻿using System.Collections.Generic;
 using System.Threading.Tasks;
 using Dapper;
 using Orders.Dal.Interfaces;
 using Orders.Domain.Enteties;
+using System.Data;
+using MySqlConnector;
 
 namespace Orders.Dal.Repositories
 {
     public class OrderRepository : BaseRepository, IOrderRepository
     {
         public OrderRepository(string connectionString) : base(connectionString) { }
+
+        protected new IDbConnection CreateConnection()
+        {
+            return new MySqlConnection(_connectionString);
+        }
 
         public async Task<Order> GetByIdAsync(int orderId)
         {
@@ -32,14 +36,15 @@ namespace Orders.Dal.Repositories
             using var conn = CreateConnection();
             string sql = @"INSERT INTO Orders (CustomerName, OrderDate, TotalAmount, PromotionId)
                            VALUES (@CustomerName, @OrderDate, @TotalAmount, @PromotionId);
-                           SELECT CAST(SCOPE_IDENTITY() as int)";
+                           SELECT LAST_INSERT_ID();";
             return await conn.QuerySingleAsync<int>(sql, order);
         }
 
         public async Task<bool> UpdateAsync(Order order)
         {
             using var conn = CreateConnection();
-            string sql = @"UPDATE Orders SET CustomerName=@CustomerName, OrderDate=@OrderDate, TotalAmount=@TotalAmount, PromotionId=@PromotionId
+            string sql = @"UPDATE Orders 
+                           SET CustomerName=@CustomerName, OrderDate=@OrderDate, TotalAmount=@TotalAmount, PromotionId=@PromotionId
                            WHERE OrderId=@OrderId";
             return await conn.ExecuteAsync(sql, order) > 0;
         }
@@ -51,5 +56,4 @@ namespace Orders.Dal.Repositories
             return await conn.ExecuteAsync(sql, new { Id = orderId }) > 0;
         }
     }
-
 }

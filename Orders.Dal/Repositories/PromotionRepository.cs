@@ -1,17 +1,21 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
+﻿using System.Collections.Generic;
 using System.Threading.Tasks;
 using Dapper;
 using Orders.Dal.Interfaces;
 using Orders.Domain.Enteties;
+using System.Data;
+using MySqlConnector;
 
 namespace Orders.Dal.Repositories
 {
     public class PromotionRepository : BaseRepository, IPromotionRepository
     {
         public PromotionRepository(string connectionString) : base(connectionString) { }
+
+        protected new IDbConnection CreateConnection()
+        {
+            return new MySqlConnection(_connectionString);
+        }
 
         public async Task<Promotion> GetByIdAsync(int promotionId)
         {
@@ -32,14 +36,15 @@ namespace Orders.Dal.Repositories
             using var conn = CreateConnection();
             string sql = @"INSERT INTO Promotion (PromoCode, DiscountPercent, ExpiryDate)
                            VALUES (@PromoCode, @DiscountPercent, @ExpiryDate);
-                           SELECT CAST(SCOPE_IDENTITY() as int)";
+                           SELECT LAST_INSERT_ID();";
             return await conn.QuerySingleAsync<int>(sql, promotion);
         }
 
         public async Task<bool> UpdateAsync(Promotion promotion)
         {
             using var conn = CreateConnection();
-            string sql = @"UPDATE Promotion SET PromoCode=@PromoCode, DiscountPercent=@DiscountPercent, ExpiryDate=@ExpiryDate
+            string sql = @"UPDATE Promotion 
+                           SET PromoCode=@PromoCode, DiscountPercent=@DiscountPercent, ExpiryDate=@ExpiryDate
                            WHERE PromotionId=@PromotionId";
             return await conn.ExecuteAsync(sql, promotion) > 0;
         }
