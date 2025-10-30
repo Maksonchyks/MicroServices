@@ -1,10 +1,14 @@
 using System.Data;
 using Microsoft.AspNetCore.Connections;
+using Microsoft.Extensions.DependencyInjection;
 using MySqlConnector;
 using Orders.Bll.Interfaces;
+using Orders.Bll.Mappers;
 using Orders.Bll.Services;
 using Orders.Dal.Interfaces;
 using Orders.Dal.UOW;
+
+
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -25,6 +29,9 @@ builder.Services.AddScoped<IPromotionService, PromotionService>();
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+
+builder.Services.AddAutoMapper(typeof(MappingProfile));
+
 
 var app = builder.Build();
 
