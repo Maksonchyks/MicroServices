@@ -16,11 +16,11 @@ namespace Catalog.Infrastructure.Persistence
         public CatalogDbContext(DbContextOptions<CatalogDbContext> options) : base(options)
         {
         }
-        public DbSet<Category> Categories { get; set; }
-        public DbSet<Product> products { get; set; }
-        public DbSet<ProductCategory> productCategories { get; set; }
-        public DbSet<ProductDetail> productDetails { get; set; }
-        public DbSet<ProductImage> productImages { get; set; }
+        public DbSet<Product> Products => Set<Product>();
+        public DbSet<Category> Categories => Set<Category>();
+        public DbSet<ProductDetail> ProductDetails => Set<ProductDetail>();
+        public DbSet<ProductImage> ProductImages => Set<ProductImage>();
+        public DbSet<ProductCategory> ProductCategories => Set<ProductCategory>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
