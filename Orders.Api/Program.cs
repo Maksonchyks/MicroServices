@@ -14,7 +14,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 
-string connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+string connectionString = builder.Configuration.GetConnectionString("DefaultConnection")!;
 builder.Services.AddScoped<IUnitOfWork>(sp =>
 {
     return new UnitOfWork(connectionString);
