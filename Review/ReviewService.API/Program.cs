@@ -4,6 +4,9 @@ using static System.Net.Mime.MediaTypeNames;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.AddServiceDefaults();
+
+
 // Add services to the container
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
@@ -29,6 +32,17 @@ builder.Services.AddCors(options =>
 });
 
 var app = builder.Build();
+
+app.MapDefaultEndpoints();
+
+app.MapGet("/health", () => Results.Ok(new
+{
+    Status = "Healthy",
+    Service = "Review Service API",
+    Timestamp = DateTime.UtcNow
+}));
+
+app.MapGet("/", () => "Review Service API is running");
 
 // Configure the HTTP request pipeline
 if (app.Environment.IsDevelopment())

@@ -12,6 +12,8 @@ using Orders.Dal.UOW;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.AddServiceDefaults();
+
 // Add services to the container.
 
 string connectionString = builder.Configuration.GetConnectionString("DefaultConnection")!;
@@ -34,6 +36,17 @@ builder.Services.AddAutoMapper(typeof(MappingProfile));
 
 
 var app = builder.Build();
+
+app.MapDefaultEndpoints();
+
+app.MapGet("/health", () => Results.Ok(new
+{
+    Status = "Healthy",
+    Service = "Orders API",
+    Timestamp = DateTime.UtcNow
+}));
+
+app.MapGet("/", () => "Orders API is running");
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())

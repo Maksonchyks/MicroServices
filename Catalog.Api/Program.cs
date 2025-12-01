@@ -11,6 +11,8 @@ using Catalog.Infrastructure.Data;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.AddServiceDefaults();
+
 // Add services to the container
 builder.Services.AddControllers();
 
@@ -51,6 +53,16 @@ builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
 
+app.MapDefaultEndpoints();
+app.MapGet("/health", () => Results.Ok(new
+{
+    Status = "Healthy",
+    Service = "Catalog API",
+    Timestamp = DateTime.UtcNow
+}));
+
+app.MapGet("/", () => "Catalog API is running");
+
 // Configure the HTTP request pipeline
 if (app.Environment.IsDevelopment())
 {
@@ -61,6 +73,7 @@ if (app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 app.UseAuthorization();
 app.MapControllers();
+
 
 // Database seeding
 using (var scope = app.Services.CreateScope())
