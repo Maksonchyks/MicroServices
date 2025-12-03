@@ -37,23 +37,36 @@ namespace AggregatorService.Controllers
         {
             try
             {
-                var ordersUrl = _configuration["Services:OrdersService"] ?? "https://localhost:7148";
-                var order = await GetFromApiAsync<object>($"{ordersUrl}/api/orders/{orderId}");
+                var gatewayUrl = _configuration["GatewayUrl"] ?? "https://localhost:7266";
+                var ordersGatewayUrl = $"{gatewayUrl}/api/orders";
+
+                var order = await GetThroughGatewayAsync<object>($"{ordersGatewayUrl}/api/orders/{orderId}");
 
                 if (order == null)
-                    return NotFound(new { OrderId = orderId, Message = "Order not found" });
+                    return NotFound(new
+                    {
+                        OrderId = orderId,
+                        Message = "Order not found",
+                        GatewayUrl = ordersGatewayUrl
+                    });
 
                 return Ok(new
                 {
                     Order = order,
                     AggregatedAt = DateTime.UtcNow,
-                    SourceUrl = ordersUrl
+                    GatewayUrl = gatewayUrl,
+                    Note = "Retrieved through API Gateway"
                 });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting order {OrderId}", orderId);
-                return StatusCode(500, new { Error = ex.Message });
+                _logger.LogError(ex, "Error getting order {OrderId} through gateway", orderId);
+                return StatusCode(500, new
+                {
+                    Error = "Failed to get order details through gateway",
+                    OrderId = orderId,
+                    Details = ex.Message
+                });
             }
         }
 
@@ -62,8 +75,10 @@ namespace AggregatorService.Controllers
         {
             try
             {
-                var ordersUrl = _configuration["Services:OrdersService"] ?? "https://localhost:7148";
-                var orders = await GetFromApiAsync<List<object>>($"{ordersUrl}/api/orders");
+                var gatewayUrl = _configuration["GatewayUrl"] ?? "https://localhost:7266";
+                var ordersGatewayUrl = $"{gatewayUrl}/api/orders";
+
+                var orders = await GetThroughGatewayAsync<List<object>>($"{ordersGatewayUrl}/api/orders");
 
                 var customerOrders = orders?
                     .Where(o => JsonSerializer.Serialize(o).Contains($"\"CustomerName\":\"{customerName}\"", StringComparison.OrdinalIgnoreCase))
@@ -74,7 +89,8 @@ namespace AggregatorService.Controllers
                     CustomerName = customerName,
                     Orders = customerOrders,
                     TotalOrders = customerOrders.Count,
-                    AggregatedAt = DateTime.UtcNow
+                    AggregatedAt = DateTime.UtcNow,
+                    GatewayUrl = gatewayUrl
                 });
             }
             catch (Exception ex)
@@ -83,7 +99,7 @@ namespace AggregatorService.Controllers
             }
         }
 
-        private async Task<T?> GetFromApiAsync<T>(string url)
+        private async Task<T?> GetThroughGatewayAsync<T>(string url)
         {
             try
             {
@@ -95,10 +111,9 @@ namespace AggregatorService.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to call API: {Url}", url);
+                _logger.LogWarning(ex, "Gateway call failed: {Url}", url);
                 return default;
             }
         }
     }
-
 }

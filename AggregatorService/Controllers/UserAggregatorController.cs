@@ -37,10 +37,11 @@ namespace AggregatorService.Controllers
         {
             try
             {
-                var reviewUrl = _configuration["Services:ReviewService"] ?? "https://localhost:7097";
+                var gatewayUrl = _configuration["GatewayUrl"] ?? "https://localhost:7266";
+                var reviewsGatewayUrl = $"{gatewayUrl}/api/reviews";
 
-                var reviewsTask = GetFromApiAsync<object>($"{reviewUrl}/api/reviews/user/{userId}");
-                var ratingsTask = GetFromApiAsync<object>($"{reviewUrl}/api/ratings/user/{userId}");
+                var reviewsTask = GetThroughGatewayAsync<object>($"{reviewsGatewayUrl}/api/reviews/user/{userId}");
+                var ratingsTask = GetThroughGatewayAsync<object>($"{reviewsGatewayUrl}/api/ratings/user/{userId}");
 
                 await Task.WhenAll(reviewsTask, ratingsTask);
 
@@ -50,43 +51,17 @@ namespace AggregatorService.Controllers
                     Reviews = reviewsTask.Result,
                     Ratings = ratingsTask.Result,
                     AggregatedAt = DateTime.UtcNow,
-                    SourceUrl = reviewUrl
+                    GatewayUrl = gatewayUrl
                 });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting profile for user {UserId}", userId);
+                _logger.LogError(ex, "Error getting profile for user {UserId} through gateway", userId);
                 return StatusCode(500, new { Error = ex.Message });
             }
         }
 
-        [HttpGet("{userId}/activity")]
-        public async Task<IActionResult> GetUserActivity(string userId)
-        {
-            try
-            {
-                var reviewUrl = _configuration["Services:ReviewService"] ?? "https://localhost:7097";
-
-                var reviewsTask = GetFromApiAsync<object>($"{reviewUrl}/api/reviews/user/{userId}");
-                var ratingsTask = GetFromApiAsync<object>($"{reviewUrl}/api/ratings/user/{userId}");
-
-                await Task.WhenAll(reviewsTask, ratingsTask);
-
-                return Ok(new
-                {
-                    UserId = userId,
-                    RecentReviews = reviewsTask.Result,
-                    RecentRatings = ratingsTask.Result,
-                    AggregatedAt = DateTime.UtcNow
-                });
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new { Error = ex.Message });
-            }
-        }
-
-        private async Task<T?> GetFromApiAsync<T>(string url)
+        private async Task<T?> GetThroughGatewayAsync<T>(string url)
         {
             try
             {
@@ -98,10 +73,9 @@ namespace AggregatorService.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to call API: {Url}", url);
+                _logger.LogWarning(ex, "Gateway call failed: {Url}", url);
                 return default;
             }
         }
     }
-
 }

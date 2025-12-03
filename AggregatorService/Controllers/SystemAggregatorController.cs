@@ -10,7 +10,6 @@ namespace AggregatorService.Controllers
         private readonly HttpClient _httpClient;
         private readonly IConfiguration _configuration;
         private readonly ILogger<SystemAggregatorController> _logger;
-        private readonly JsonSerializerOptions _jsonOptions;
 
         public SystemAggregatorController(
             IConfiguration configuration,
@@ -18,10 +17,6 @@ namespace AggregatorService.Controllers
         {
             _configuration = configuration;
             _logger = logger;
-            _jsonOptions = new JsonSerializerOptions
-            {
-                PropertyNameCaseInsensitive = true
-            };
 
             // HttpClient, який ігнорує SSL помилки для localhost
             _httpClient = new HttpClient(new HttpClientHandler
@@ -38,17 +33,16 @@ namespace AggregatorService.Controllers
         {
             try
             {
-                var catalogUrl = _configuration["Services:CatalogService"] ?? "https://localhost:7267";
-                var ordersUrl = _configuration["Services:OrdersService"] ?? "https://localhost:7148";
-                var reviewUrl = _configuration["Services:ReviewService"] ?? "https://localhost:7097";
+                var gatewayUrl = _configuration["GatewayUrl"] ?? "https://localhost:7266";
 
-                var catalogTask = CheckHealthAsync($"{catalogUrl}/health");
-                var ordersTask = CheckHealthAsync($"{ordersUrl}/health");
-                var reviewTask = CheckHealthAsync($"{reviewUrl}/health");
+                // Aggregator теж використовує Gateway!
+                var catalogTask = CheckHealthThroughGatewayAsync($"{gatewayUrl}/api/catalog/health");
+                var ordersTask = CheckHealthThroughGatewayAsync($"{gatewayUrl}/api/orders/health");
+                var reviewsTask = CheckHealthThroughGatewayAsync($"{gatewayUrl}/api/reviews/health");
+                var aggregatorTask = CheckHealthThroughGatewayAsync($"{gatewayUrl}/api/aggregator/health");
 
-                await Task.WhenAll(catalogTask, ordersTask, reviewTask);
+                await Task.WhenAll(catalogTask, ordersTask, reviewsTask, aggregatorTask);
 
-                // Створюємо список об'єктів явно
                 var servicesList = new List<object>
                 {
                     new
@@ -56,89 +50,94 @@ namespace AggregatorService.Controllers
                         Name = "Catalog API",
                         Status = catalogTask.Result.Status,
                         ResponseTime = catalogTask.Result.ResponseTimeMs,
-                        Url = catalogUrl
+                        AccessedThrough = "Gateway"
                     },
                     new
                     {
                         Name = "Orders API",
                         Status = ordersTask.Result.Status,
                         ResponseTime = ordersTask.Result.ResponseTimeMs,
-                        Url = ordersUrl
+                        AccessedThrough = "Gateway"
                     },
                     new
                     {
                         Name = "Review Service API",
-                        Status = reviewTask.Result.Status,
-                        ResponseTime = reviewTask.Result.ResponseTimeMs,
-                        Url = reviewUrl
+                        Status = reviewsTask.Result.Status,
+                        ResponseTime = reviewsTask.Result.ResponseTimeMs,
+                        AccessedThrough = "Gateway"
                     },
                     new
                     {
                         Name = "Aggregator API",
-                        Status = "Healthy",
-                        ResponseTime = 0,
-                        Url = "https://localhost:7118"
+                        Status = aggregatorTask.Result.Status,
+                        ResponseTime = aggregatorTask.Result.ResponseTimeMs,
+                        AccessedThrough = "Gateway"
                     }
                 };
 
                 return Ok(new
                 {
                     Timestamp = DateTime.UtcNow,
-                    Services = servicesList,  // Використовуємо список замість масиву
+                    GatewayUrl = gatewayUrl,
+                    Services = servicesList,
                     AllHealthy = catalogTask.Result.Status == "Healthy" &&
                                 ordersTask.Result.Status == "Healthy" &&
-                                reviewTask.Result.Status == "Healthy"
+                                reviewsTask.Result.Status == "Healthy" &&
+                                aggregatorTask.Result.Status == "Healthy",
+                    Architecture = "All requests go through API Gateway"
                 });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error checking system health");
+                _logger.LogError(ex, "Error checking system health through gateway");
                 return StatusCode(500, new { Error = ex.Message });
             }
         }
 
-        [HttpGet("test")]
-        public async Task<IActionResult> TestEndpoints()
+        [HttpGet("gateway-test")]
+        public async Task<IActionResult> TestGatewayRoutes()
         {
+            var gatewayUrl = _configuration["GatewayUrl"] ?? "https://localhost:7266";
             var results = new List<object>();
 
-            var endpoints = new[]
+            var routes = new[]
             {
-                new { Service = "Catalog", Url = "https://localhost:7267/health" },
-                new { Service = "Orders", Url = "https://localhost:7148/health" },
-                new { Service = "Reviews", Url = "https://localhost:7097/health" },
-                new { Service = "Aggregator", Url = "https://localhost:7118/health" }
+                new { Route = "/api/catalog/health", Service = "Catalog API" },
+                new { Route = "/api/orders/health", Service = "Orders API" },
+                new { Route = "/api/reviews/health", Service = "Reviews API" },
+                new { Route = "/api/aggregator/health", Service = "Aggregator API" },
+                new { Route = "/api/catalog/api/categories", Service = "Catalog Categories" },
+                new { Route = "/api/orders/api/orders", Service = "Orders List" },
+                new { Route = "/api/reviews/api/discussions", Service = "Reviews Discussions" }
             };
 
-            foreach (var endpoint in endpoints)
+            foreach (var route in routes)
             {
                 try
                 {
                     var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-                    var response = await _httpClient.GetAsync(endpoint.Url);
+                    var response = await _httpClient.GetAsync($"{gatewayUrl}{route.Route}");
                     stopwatch.Stop();
-
-                    var content = await response.Content.ReadAsStringAsync();
 
                     results.Add(new
                     {
-                        Service = endpoint.Service,
-                        Url = endpoint.Url,
+                        Service = route.Service,
+                        Route = route.Route,
+                        FullUrl = $"{gatewayUrl}{route.Route}",
                         StatusCode = (int)response.StatusCode,
                         Success = response.IsSuccessStatusCode,
-                        ResponseTimeMs = stopwatch.ElapsedMilliseconds,
-                        Response = content
+                        ResponseTimeMs = stopwatch.ElapsedMilliseconds
                     });
                 }
                 catch (Exception ex)
                 {
                     results.Add(new
                     {
-                        Service = endpoint.Service,
-                        Url = endpoint.Url,
+                        Service = route.Service,
+                        Route = route.Route,
+                        FullUrl = $"{gatewayUrl}{route.Route}",
                         Error = ex.Message,
-                        Success = false,
-                        ResponseTimeMs = 0
+                        Success = false
                     });
                 }
             }
@@ -146,11 +145,13 @@ namespace AggregatorService.Controllers
             return Ok(new
             {
                 Timestamp = DateTime.UtcNow,
-                Results = results
+                GatewayUrl = gatewayUrl,
+                TestResults = results,
+                Note = "Testing all routes through API Gateway"
             });
         }
 
-        private async Task<(string Status, long ResponseTimeMs)> CheckHealthAsync(string url)
+        private async Task<(string Status, long ResponseTimeMs)> CheckHealthThroughGatewayAsync(string url)
         {
             try
             {
@@ -164,23 +165,7 @@ namespace AggregatorService.Controllers
             }
             catch (Exception ex)
             {
-                return ($"Error: {ex.Message.Split(':')[0]}", 0);
-            }
-        }
-
-        private async Task<T?> GetFromApiAsync<T>(string url)
-        {
-            try
-            {
-                var response = await _httpClient.GetAsync(url);
-                response.EnsureSuccessStatusCode();
-
-                var content = await response.Content.ReadAsStreamAsync();
-                return await JsonSerializer.DeserializeAsync<T>(content, _jsonOptions);
-            }
-            catch
-            {
-                return default;
+                return ($"Gateway Error: {ex.Message.Split(':')[0]}", 0);
             }
         }
     }

@@ -38,12 +38,16 @@ namespace AggregatorService.Controllers
         {
             try
             {
-                var catalogUrl = _configuration["Services:CatalogService"] ?? "https://localhost:7267";
-                var reviewUrl = _configuration["Services:ReviewService"] ?? "https://localhost:7097";
+                var gatewayUrl = _configuration["GatewayUrl"] ?? "https://localhost:7266";
 
-                var productTask = GetFromApiAsync<object>($"{catalogUrl}/api/products/{productId}");
-                var imagesTask = GetFromApiAsync<object>($"{catalogUrl}/api/products/{productId}/images");
-                var reviewsTask = GetFromApiAsync<object>($"{reviewUrl}/api/reviews/product/{productId}");
+                // Всі запити через Gateway!
+                var catalogGatewayUrl = $"{gatewayUrl}/api/catalog";
+                var reviewsGatewayUrl = $"{gatewayUrl}/api/reviews";
+
+                // Паралельні запити через Gateway
+                var productTask = GetThroughGatewayAsync<object>($"{catalogGatewayUrl}/api/products/{productId}");
+                var imagesTask = GetThroughGatewayAsync<object>($"{catalogGatewayUrl}/api/products/{productId}/images");
+                var reviewsTask = GetThroughGatewayAsync<object>($"{reviewsGatewayUrl}/api/reviews/product/{productId}");
 
                 await Task.WhenAll(productTask, imagesTask, reviewsTask);
 
@@ -53,17 +57,18 @@ namespace AggregatorService.Controllers
                     Images = imagesTask.Result,
                     Reviews = reviewsTask.Result,
                     AggregatedAt = DateTime.UtcNow,
-                    SourceUrls = new
-                    {
-                        Catalog = catalogUrl,
-                        Reviews = reviewUrl
-                    }
+                    GatewayUsed = gatewayUrl,
+                    RequestPath = "All requests routed through API Gateway"
                 });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error aggregating product {ProductId}", productId);
-                return StatusCode(500, new { Error = ex.Message });
+                _logger.LogError(ex, "Error aggregating product {ProductId} through gateway", productId);
+                return StatusCode(500, new
+                {
+                    Error = "Failed to aggregate product data through gateway",
+                    Details = ex.Message
+                });
             }
         }
 
@@ -75,11 +80,12 @@ namespace AggregatorService.Controllers
 
             try
             {
-                var catalogUrl = _configuration["Services:CatalogService"] ?? "https://localhost:7267";
-                var reviewUrl = _configuration["Services:ReviewService"] ?? "https://localhost:7097";
+                var gatewayUrl = _configuration["GatewayUrl"] ?? "https://localhost:7266";
+                var catalogGatewayUrl = $"{gatewayUrl}/api/catalog";
+                var reviewsGatewayUrl = $"{gatewayUrl}/api/reviews";
 
-                var productsTask = GetFromApiAsync<object>($"{catalogUrl}/api/products/search?searchTerm={Uri.EscapeDataString(query)}");
-                var reviewsTask = GetFromApiAsync<object>($"{reviewUrl}/api/reviews/product/search?query={Uri.EscapeDataString(query)}");
+                var productsTask = GetThroughGatewayAsync<object>($"{catalogGatewayUrl}/api/products/search?searchTerm={Uri.EscapeDataString(query)}");
+                var reviewsTask = GetThroughGatewayAsync<object>($"{reviewsGatewayUrl}/api/reviews/product/search?query={Uri.EscapeDataString(query)}");
 
                 await Task.WhenAll(productsTask, reviewsTask);
 
@@ -88,7 +94,8 @@ namespace AggregatorService.Controllers
                     Query = query,
                     Products = productsTask.Result,
                     Reviews = reviewsTask.Result,
-                    AggregatedAt = DateTime.UtcNow
+                    AggregatedAt = DateTime.UtcNow,
+                    GatewayUrl = gatewayUrl
                 });
             }
             catch (Exception ex)
@@ -97,10 +104,11 @@ namespace AggregatorService.Controllers
             }
         }
 
-        private async Task<T?> GetFromApiAsync<T>(string url)
+        private async Task<T?> GetThroughGatewayAsync<T>(string url)
         {
             try
             {
+                _logger.LogInformation("Calling through Gateway: {Url}", url);
                 var response = await _httpClient.GetAsync(url);
                 response.EnsureSuccessStatusCode();
 
@@ -109,7 +117,7 @@ namespace AggregatorService.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to call API: {Url}", url);
+                _logger.LogWarning(ex, "Gateway call failed: {Url}", url);
                 return default;
             }
         }
